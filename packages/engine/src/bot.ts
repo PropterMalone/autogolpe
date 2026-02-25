@@ -6,6 +6,27 @@ import { AtpAgent, RichText } from '@atproto/api';
 
 const BLUESKY_MAX_GRAPHEMES = 300;
 
+// Rate limiter: max 5 posts per 60s sliding window.
+// Prevents burst posting that triggers Bluesky spam detection.
+const POST_WINDOW_MS = 60_000;
+const MAX_POSTS_PER_WINDOW = 5;
+const postTimestamps: number[] = [];
+
+async function rateLimitedPost<T>(fn: () => Promise<T>): Promise<T> {
+	const now = Date.now();
+	// Prune timestamps outside the window
+	while (postTimestamps.length > 0 && postTimestamps[0]! < now - POST_WINDOW_MS) {
+		postTimestamps.shift();
+	}
+	if (postTimestamps.length >= MAX_POSTS_PER_WINDOW) {
+		const waitMs = postTimestamps[0]! + POST_WINDOW_MS - now + 100;
+		console.log(`Rate limit: waiting ${Math.round(waitMs / 1000)}s before posting`);
+		await new Promise((r) => setTimeout(r, waitMs));
+	}
+	postTimestamps.push(Date.now());
+	return fn();
+}
+
 export function truncateToLimit(text: string, limit = BLUESKY_MAX_GRAPHEMES): string {
 	const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' });
 	const segments = [...segmenter.segment(text)];
@@ -187,7 +208,7 @@ export async function postMessageChain(
 	const { facets: firstFacets } = await buildFacets(agent, firstChunk);
 	const firstRecord: Record<string, unknown> = { text: firstChunk };
 	if (firstFacets?.length) firstRecord['facets'] = firstFacets;
-	const firstResponse = await agent.post(firstRecord);
+	const firstResponse = await rateLimitedPost(() => agent.post(firstRecord));
 	const first: PostRef = { uri: firstResponse.uri, cid: firstResponse.cid };
 	const refs: [PostRef, ...PostRef[]] = [first];
 
@@ -202,7 +223,7 @@ export async function postMessageChain(
 			},
 		};
 		if (facets?.length) record['facets'] = facets;
-		const response = await agent.post(record);
+		const response = await rateLimitedPost(() => agent.post(record));
 		prev = { uri: response.uri, cid: response.cid };
 		refs.push(prev);
 	}
@@ -240,7 +261,7 @@ export async function replyToPostChain(
 		},
 	};
 	if (firstFacets?.length) firstRecord['facets'] = firstFacets;
-	const firstResponse = await agent.post(firstRecord);
+	const firstResponse = await rateLimitedPost(() => agent.post(firstRecord));
 	const first: PostRef = { uri: firstResponse.uri, cid: firstResponse.cid };
 	const refs: [PostRef, ...PostRef[]] = [first];
 
@@ -255,7 +276,7 @@ export async function replyToPostChain(
 			},
 		};
 		if (facets?.length) record['facets'] = facets;
-		const response = await agent.post(record);
+		const response = await rateLimitedPost(() => agent.post(record));
 		prev = { uri: response.uri, cid: response.cid };
 		refs.push(prev);
 	}

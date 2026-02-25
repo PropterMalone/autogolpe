@@ -17,6 +17,7 @@ RUN npm run build
 
 FROM node:22-slim AS runtime
 
+RUN mkdir -p /data && chown node:node /data
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/shared/package.json packages/shared/
@@ -29,4 +30,5 @@ COPY --from=builder /app/packages/shared/dist packages/shared/dist
 COPY --from=builder /app/packages/engine/dist packages/engine/dist
 COPY --from=builder /app/packages/feed/dist packages/feed/dist
 
+USER node
 CMD ["node", "packages/engine/dist/index.js"]
