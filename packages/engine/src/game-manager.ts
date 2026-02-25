@@ -777,9 +777,11 @@ export class GameManager {
 			await this.promptExchange(game);
 		}
 
-		// If game finished, announce
-		if (game.status === 'finished') {
-			await this.announceWinner(gameId, game);
+		// Game logic may have set status to 'finished' during resolution above.
+		// Re-read from map since TS narrowed status to 'active' at the guard.
+		const updated = this.games.get(gameId);
+		if (updated?.status === 'finished') {
+			await this.announceWinner(gameId, updated);
 		}
 	}
 

@@ -263,6 +263,20 @@ export async function replyToPostChain(
 	return refs;
 }
 
+async function retryFetch<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
+	for (let attempt = 0; ; attempt++) {
+		try {
+			return await fn();
+		} catch (err) {
+			const isSocketError =
+				err instanceof Error &&
+				(err.message.includes('fetch failed') || err.message.includes('SOCKET'));
+			if (!isSocketError || attempt >= retries) throw err;
+			await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+		}
+	}
+}
+
 export async function pollMentions(
 	agent: AtpAgent,
 ): Promise<{ notifications: MentionNotification[] }> {
@@ -270,12 +284,14 @@ export async function pollMentions(
 	let pageCursor: string | undefined;
 
 	for (let page = 0; page < 5; page++) {
-		const response = await agent.listNotifications({ cursor: pageCursor, limit: 50 });
+		const response = await retryFetch(() =>
+			agent.listNotifications({ cursor: pageCursor, limit: 50 }),
+		);
 		const notifs = response.data.notifications;
 		if (notifs.length === 0) break;
 
 		const mentions = notifs
-			.filter((n) => (n.reason === 'mention' || n.reason === 'reply') && !n.isRead)
+			.filter((n) => n.reason === 'mention' || n.reason === 'reply')
 			.map((n) => ({
 				uri: n.uri,
 				cid: n.cid,
@@ -286,14 +302,12 @@ export async function pollMentions(
 			}));
 
 		allMentions.push(...mentions);
-		if (notifs.some((n) => n.isRead)) break;
+		// Stop paginating once we've gone far enough back (past first page
+		// is usually sufficient since we dedup by URI in the caller)
+		if (page > 0) break;
 
 		pageCursor = response.data.cursor;
 		if (!pageCursor) break;
-	}
-
-	if (allMentions.length > 0) {
-		await agent.updateSeenNotifications();
 	}
 
 	return { notifications: allMentions };
