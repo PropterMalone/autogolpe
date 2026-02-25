@@ -1,0 +1,30 @@
+{
+  "name": "autogolpe",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Coup on Bluesky — bluffing and deception through AT Protocol",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "type-check": "tsc --noEmit",
+    "validate": "biome check . && tsc --noEmit && vitest run",
+    "dev": "npm run dev --workspace=packages/engine"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.0",
+    "@vitest/coverage-v8": "^3.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
