@@ -199,15 +199,28 @@ export class GameManager {
 		this.updateAndSave(gameId, result.state);
 
 		const challenger = result.state.players.find((p) => p.did === challengerDid);
-		const target = result.state.pendingChallenge
-			? result.state.players.find((p) => p.did === result.state.pendingChallenge!.targetDid)
+		const challenge = result.state.pendingChallenge;
+		const target = challenge
+			? result.state.players.find((p) => p.did === challenge.targetDid)
 			: null;
 
 		await this.announceInGame(
 			gameId,
-			`@${challenger?.handle} challenges @${target?.handle}'s claim of ${result.state.pendingChallenge?.claimedRole}!\n\n@${target?.handle}, reveal a card to prove or disprove your claim. DM me "reveal 1" or "reveal 2".`,
+			`@${challenger?.handle} challenges @${target?.handle}'s claim of ${challenge?.claimedRole}!`,
 			'action',
 		);
+
+		// DM the challenged player with reveal instructions
+		if (target && challenge) {
+			const unrevealed = target.cards
+				.map((c, i) => (!c.revealed ? `${i + 1}: ${c.role}` : null))
+				.filter(Boolean)
+				.join(', ');
+			await this.dm.sendDm(
+				target.did,
+				`You've been challenged on ${challenge.claimedRole}! Your cards: ${unrevealed}\nDM me "reveal 1" or "reveal 2" (or "reveal duke" etc.)`,
+			);
+		}
 
 		return null;
 	}
@@ -242,11 +255,10 @@ export class GameManager {
 		this.updateAndSave(gameId, result.state);
 
 		const blocker = result.state.players.find((p) => p.did === blockerDid);
-		await this.announceInGame(
-			gameId,
-			`@${blocker?.handle} blocks, claiming ${role}! Challenge or pass. (${this.formatTimeRemaining(result.state)})`,
-			'action',
-		);
+		await this.announceInGame(gameId, `@${blocker?.handle} blocks with ${role}!`, 'action');
+
+		// DM eligible challengers about the block
+		await this.dmBlockChallengers(result.state);
 
 		return null;
 	}
@@ -554,22 +566,22 @@ export class GameManager {
 				text = `${actorName} takes income (+1 coin).`;
 				break;
 			case 'foreign_aid':
-				text = `${actorName} claims foreign aid (+2 coins). Anyone can block (Duke). (${this.formatTimeRemaining(state)})`;
+				text = `${actorName} claims foreign aid.`;
 				break;
 			case 'coup':
 				text = `${actorName} launches a coup against @${targetHandle}! (-7 coins)`;
 				break;
 			case 'tax':
-				text = `${actorName} claims Duke — tax (+3 coins). Challenge? (${this.formatTimeRemaining(state)})`;
+				text = `${actorName} claims Duke — tax.`;
 				break;
 			case 'assassinate':
-				text = `${actorName} claims Assassin — assassinate @${targetHandle}! (-3 coins) Challenge? (${this.formatTimeRemaining(state)})`;
+				text = `${actorName} claims Assassin — targets @${targetHandle}! (-3 coins)`;
 				break;
 			case 'steal':
-				text = `${actorName} claims Captain — steal from @${targetHandle}. Challenge? (${this.formatTimeRemaining(state)})`;
+				text = `${actorName} claims Captain — steal from @${targetHandle}.`;
 				break;
 			case 'exchange':
-				text = `${actorName} claims Ambassador — exchange cards. Challenge? (${this.formatTimeRemaining(state)})`;
+				text = `${actorName} claims Ambassador — exchange.`;
 				break;
 		}
 
@@ -579,6 +591,13 @@ export class GameManager {
 		}
 
 		await this.announceInGame(state.id, text, 'action');
+
+		// DM eligible players about their response options
+		if (state.turnPhase === 'challenge_window') {
+			await this.dmChallengers(state);
+		} else if (state.turnPhase === 'block_window') {
+			await this.dmBlockers(state);
+		}
 
 		// For coup: prompt target or announce next turn if auto-resolved (1-card target)
 		if (action === 'coup') {
@@ -606,24 +625,30 @@ export class GameManager {
 		// Did the challenged player have the role?
 		// If the new state is in losing_influence with the challenger as target, challenge failed
 		if (newState.influenceLossDid === challenge.challengerDid) {
-			await this.announceInGame(
-				gameId,
-				`@${target?.handle} reveals ${challenge.claimedRole} — they had it! @${challenger?.handle} loses influence.`,
-				'action',
-			);
-			await this.promptInfluenceLoss(newState);
+			let text = `@${target?.handle} reveals ${challenge.claimedRole} — they had it! @${challenger?.handle} loses influence.`;
+			// If challenger only has 1 card, auto-loss is immediate — batch the result
+			if (isEliminated(newState.players.find((p) => p.did === challenge.challengerDid)!)) {
+				text += ` @${challenger?.handle} is eliminated!`;
+			}
+			await this.announceInGame(gameId, text, 'action');
+			if (newState.turnPhase === 'losing_influence') {
+				await this.promptInfluenceLoss(newState);
+			} else if (newState.turnPhase === 'awaiting_action') {
+				await this.announceNextTurn(gameId, newState);
+			}
 		} else if (newState.status === 'finished') {
 			await this.announceWinner(gameId, newState);
 		} else {
 			// Challenge succeeded — target was bluffing
-			await this.announceInGame(
-				gameId,
-				`@${target?.handle} didn't have ${challenge.claimedRole} — caught bluffing! They lose a card.`,
-				'action',
-			);
-			if (newState.turnPhase === 'awaiting_action') {
-				await this.announceInGame(gameId, this.nextTurnText(newState), 'phase');
+			let text = `@${target?.handle} didn't have ${challenge.claimedRole} — caught bluffing!`;
+			if (isEliminated(newState.players.find((p) => p.did === challenge.targetDid)!)) {
+				text += ` @${target?.handle} is eliminated!`;
 			}
+			// Batch next turn if action is over
+			if (newState.turnPhase === 'awaiting_action') {
+				text += `\n\n${this.nextTurnText(newState)}`;
+			}
+			await this.announceInGame(gameId, text, 'action');
 		}
 	}
 
@@ -637,37 +662,27 @@ export class GameManager {
 		const player = oldState.players.find((p) => p.did === playerDid);
 		const card = player?.cards[cardIndex];
 		const role = card?.role ?? 'unknown';
+		const eliminated = isEliminated(newState.players.find((p) => p.did === playerDid)!);
 
-		await this.announceInGame(
-			gameId,
-			`@${player?.handle} reveals ${role}.${isEliminated(newState.players.find((p) => p.did === playerDid)!) ? ' They are eliminated!' : ''}`,
-			'action',
-		);
+		let text = `@${player?.handle} reveals ${role}.${eliminated ? ' Eliminated!' : ''}`;
+
+		// Batch next turn with this announcement
+		if (newState.turnPhase === 'awaiting_action') {
+			text += `\n\n${this.nextTurnText(newState)}`;
+		}
+
+		await this.announceInGame(gameId, text, 'action');
 
 		if (newState.status === 'finished') {
 			await this.announceWinner(gameId, newState);
-		} else if (newState.turnPhase === 'awaiting_action') {
-			await this.announceNextTurn(gameId, newState);
 		} else if (newState.turnPhase === 'losing_influence') {
 			// Someone else now needs to lose influence
 			await this.promptInfluenceLoss(newState);
 		} else if (newState.turnPhase === 'block_window') {
-			const action = newState.pendingAction;
-			if (action) {
-				const blockRoles = BLOCK_RULES[action.kind];
-				if (blockRoles) {
-					const targetPlayer = action.targetDid
-						? newState.players.find((p) => p.did === action.targetDid)
-						: null;
-					const who = targetPlayer ? `@${targetPlayer.handle}` : 'Anyone';
-					await this.announceInGame(
-						gameId,
-						`${who} may block (${blockRoles.join('/')}). (${this.formatTimeRemaining(newState)})`,
-						'action',
-					);
-				}
-			}
+			// DM eligible blockers instead of public post
+			await this.dmBlockers(newState);
 		}
+		// awaiting_action already handled in batched text above
 	}
 
 	private async announceStateChange(
@@ -683,21 +698,8 @@ export class GameManager {
 		// Transitioned from a window to a new phase
 		if (newState.turnPhase !== oldState.turnPhase) {
 			if (newState.turnPhase === 'block_window' && oldState.turnPhase === 'challenge_window') {
-				const action = newState.pendingAction;
-				if (action) {
-					const blockRoles = BLOCK_RULES[action.kind];
-					if (blockRoles) {
-						const targetPlayer = action.targetDid
-							? newState.players.find((p) => p.did === action.targetDid)
-							: null;
-						const who = targetPlayer ? `@${targetPlayer.handle}` : 'Anyone';
-						await this.announceInGame(
-							gameId,
-							`No challenge. ${who} may block (${blockRoles.join('/')}). (${this.formatTimeRemaining(newState)})`,
-							'action',
-						);
-					}
-				}
+				// Don't post publicly — DM eligible blockers instead
+				await this.dmBlockers(newState);
 			} else if (newState.turnPhase === 'awaiting_action') {
 				await this.announceNextTurn(gameId, newState);
 			} else if (newState.turnPhase === 'losing_influence') {
@@ -770,6 +772,52 @@ export class GameManager {
 		);
 	}
 
+	/** DM all eligible challengers about a role claim */
+	private async dmChallengers(state: GameState): Promise<void> {
+		const action = state.pendingAction;
+		if (!action?.claimedRole) return;
+		const actor = state.players.find((p) => p.did === action.actorDid);
+		for (const player of getAlivePlayers(state)) {
+			if (player.did === action.actorDid) continue;
+			await this.dm.sendDm(
+				player.did,
+				`@${actor?.handle} claims ${action.claimedRole}. Challenge? Reply "challenge" or "pass" to the game post.`,
+			);
+		}
+	}
+
+	/** DM eligible blockers when challenge window passes */
+	private async dmBlockers(state: GameState): Promise<void> {
+		const action = state.pendingAction;
+		if (!action) return;
+		const blockRoles = BLOCK_RULES[action.kind];
+		if (!blockRoles) return;
+		const actor = state.players.find((p) => p.did === action.actorDid);
+		for (const player of getAlivePlayers(state)) {
+			if (player.did === action.actorDid) continue;
+			// For targeted actions (steal, assassinate), only the target can block
+			if (action.targetDid && player.did !== action.targetDid) continue;
+			await this.dm.sendDm(
+				player.did,
+				`@${actor?.handle}'s ${action.kind} — block with ${blockRoles.join('/')}? Reply "block ${blockRoles[0]}" or "pass".`,
+			);
+		}
+	}
+
+	/** DM eligible challengers about a block claim */
+	private async dmBlockChallengers(state: GameState): Promise<void> {
+		const block = state.pendingBlock;
+		if (!block) return;
+		const blocker = state.players.find((p) => p.did === block.blockerDid);
+		for (const player of getAlivePlayers(state)) {
+			if (player.did === block.blockerDid) continue;
+			await this.dm.sendDm(
+				player.did,
+				`@${blocker?.handle} blocks with ${block.claimedRole}. Challenge the block? Reply "challenge" or "pass".`,
+			);
+		}
+	}
+
 	private async dmHand(state: GameState, playerDid: Did): Promise<void> {
 		const player = state.players.find((p) => p.did === playerDid);
 		if (!player) return;
@@ -817,30 +865,6 @@ export class GameManager {
 		saveGame(this.db, state);
 		if (state.status === 'finished' && !this.finishedAt.has(gameId)) {
 			this.finishedAt.set(gameId, now ?? Date.now());
-		}
-	}
-
-	private formatTimeRemaining(state: GameState): string {
-		const duration = this.getWindowDuration(state);
-		if (duration === 0) return '';
-		const remaining = Math.max(0, state.phaseStartedAt + duration - Date.now());
-		const seconds = Math.ceil(remaining / 1000);
-		return `${seconds}s remaining`;
-	}
-
-	private getWindowDuration(state: GameState): number {
-		switch (state.turnPhase) {
-			case 'challenge_window':
-				return state.config.challengeWindowMs;
-			case 'block_window':
-			case 'challenge_block_window':
-				return state.config.blockWindowMs;
-			case 'losing_influence':
-				return state.config.influenceChoiceMs;
-			case 'exchanging':
-				return state.config.exchangeChoiceMs;
-			default:
-				return 0;
 		}
 	}
 }

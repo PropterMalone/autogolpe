@@ -3,7 +3,7 @@
  * Connects to Bluesky, hydrates game state, starts polling loop.
  * Adapted from Skeetwolf — shorter poll interval for Coup's fast timers.
  */
-import { createAgent, pollMentions } from './bot.js';
+import { createAgent, pollMentions, searchMentions } from './bot.js';
 import { parseDm, parseMention } from './command-parser.js';
 import { loadBotState, openDatabase, saveBotState } from './db.js';
 import {
@@ -100,6 +100,17 @@ async function main() {
 				POLL_TIMEOUT_MS,
 				'pollMentions',
 			);
+
+			// Supplement with search — catches mentions that listNotifications drops
+			const searchResults = await withTimeout(
+				() => searchMentions(agent, BOT_HANDLE, mentionCutoff),
+				POLL_TIMEOUT_MS,
+				'searchMentions',
+			);
+			const seenUris = new Set(notifications.map((n) => n.uri));
+			for (const m of searchResults) {
+				if (!seenUris.has(m.uri)) notifications.push(m);
+			}
 
 			const botDid = agent.session?.did;
 			let newestIndexedAt = mentionCutoff;

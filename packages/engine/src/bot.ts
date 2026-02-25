@@ -343,6 +343,47 @@ export interface MentionNotification {
 	indexedAt: string;
 }
 
+/**
+ * Supplement to pollMentions — uses searchPosts to catch mentions that
+ * listNotifications silently drops (known Bluesky issue with low-activity accounts).
+ */
+export async function searchMentions(
+	agent: AtpAgent,
+	botHandle: string,
+	since?: string,
+): Promise<MentionNotification[]> {
+	const mentions: MentionNotification[] = [];
+	try {
+		const response = await retryFetch(() =>
+			agent.app.bsky.feed.searchPosts({
+				q: botHandle,
+				limit: 25,
+				sort: 'latest',
+			}),
+		);
+
+		for (const post of response.data.posts) {
+			const text = (post.record as { text?: string }).text ?? '';
+			// Skip posts by the bot itself
+			if (post.author.did === agent.session?.did) continue;
+			// Skip posts older than cutoff
+			if (since && post.indexedAt <= since) continue;
+
+			mentions.push({
+				uri: post.uri,
+				cid: post.cid,
+				authorDid: post.author.did,
+				authorHandle: post.author.handle,
+				text,
+				indexedAt: post.indexedAt,
+			});
+		}
+	} catch (err) {
+		console.error('searchMentions error:', err);
+	}
+	return mentions;
+}
+
 export async function resolveHandle(agent: AtpAgent, handle: string): Promise<string | null> {
 	try {
 		const response = await agent.resolveHandle({ handle });
