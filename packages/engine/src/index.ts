@@ -67,6 +67,10 @@ async function main() {
 	const manager = new GameManager(db, agent, dm);
 	await manager.hydrate();
 
+	// Brief pause after login — Bluesky sometimes closes the socket on
+	// the first API call if it comes too soon after auth.
+	await new Promise((r) => setTimeout(r, 2000));
+
 	for (const signal of ['SIGTERM', 'SIGINT'] as const) {
 		process.on(signal, () => {
 			console.log(`${signal} received, shutting down...`);
@@ -80,6 +84,7 @@ async function main() {
 	);
 
 	let dmMessageId: string | undefined = loadBotState(db, 'dm_message_id') ?? undefined;
+	let mentionCutoff = loadBotState(db, 'mention_cutoff') ?? new Date(0).toISOString();
 	let backoffMs = POLL_INTERVAL_MS;
 	const processedMentionUris = new Set<string>();
 	let pollCount = 0;
@@ -97,10 +102,19 @@ async function main() {
 			);
 
 			const botDid = agent.session?.did;
+			let newestIndexedAt = mentionCutoff;
+
 			for (const mention of notifications) {
 				if (botDid && mention.authorDid === botDid) continue;
+				// Skip mentions older than our persisted cutoff
+				if (mention.indexedAt <= mentionCutoff) continue;
 				if (processedMentionUris.has(mention.uri)) continue;
 				processedMentionUris.add(mention.uri);
+
+				if (mention.indexedAt > newestIndexedAt) {
+					newestIndexedAt = mention.indexedAt;
+				}
+
 				await handleMention(
 					manager,
 					agent,
@@ -110,6 +124,11 @@ async function main() {
 					mention.authorHandle,
 					mention.text,
 				);
+			}
+
+			if (newestIndexedAt > mentionCutoff) {
+				mentionCutoff = newestIndexedAt;
+				saveBotState(db, 'mention_cutoff', mentionCutoff);
 			}
 
 			if (processedMentionUris.size > 1000) {
