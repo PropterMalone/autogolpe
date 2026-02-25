@@ -84,7 +84,7 @@ async function main() {
 	);
 
 	let dmMessageId: string | undefined = loadBotState(db, 'dm_message_id') ?? undefined;
-	let mentionCutoff = loadBotState(db, 'mention_cutoff') ?? new Date(0).toISOString();
+	let mentionCutoff = loadBotState(db, 'mention_cutoff') ?? new Date().toISOString();
 	let backoffMs = POLL_INTERVAL_MS;
 	const processedMentionUris = new Set<string>();
 	let pollCount = 0;

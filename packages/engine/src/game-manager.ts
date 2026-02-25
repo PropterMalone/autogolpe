@@ -39,6 +39,7 @@ import {
 import type { DmSender } from './dm.js';
 
 const QUEUE_THRESHOLD = 3; // auto-start when queue reaches this size
+const GAME_TIMEOUT_MS = 30 * 60 * 1000; // abandon game after 30min of no activity
 
 export class GameManager {
 	private games = new Map<string, GameState>();
@@ -443,6 +444,19 @@ export class GameManager {
 		for (const [gameId, game] of this.games) {
 			if (game.status !== 'active') continue;
 
+			// Abandon game if no activity for 30 minutes
+			if (now - game.phaseStartedAt > GAME_TIMEOUT_MS) {
+				console.log(`Game ${gameId} timed out (no activity for 30min)`);
+				const finished = { ...game, status: 'finished' as const, winner: null };
+				this.updateAndSave(gameId, finished);
+				await this.announceInGame(
+					gameId,
+					`Game #${gameId} abandoned (no activity for 30 minutes).`,
+					'timeout',
+				);
+				continue;
+			}
+
 			const result = autoAdvance(game, now);
 			if (result.state !== game) {
 				// State changed — auto-advanced
@@ -770,7 +784,12 @@ export class GameManager {
 
 	private async handleAutoResolution(gameId: string): Promise<void> {
 		const game = this.games.get(gameId);
-		if (!game || game.status !== 'active') return;
+		if (!game) return;
+
+		if (game.status === 'finished') {
+			await this.announceWinner(gameId, game);
+			return;
+		}
 
 		// If we ended up in exchanging phase after a resolve, prompt
 		if (game.turnPhase === 'exchanging') {
@@ -778,7 +797,6 @@ export class GameManager {
 		}
 
 		// Game logic may have set status to 'finished' during resolution above.
-		// Re-read from map since TS narrowed status to 'active' at the guard.
 		const updated = this.games.get(gameId);
 		if (updated?.status === 'finished') {
 			await this.announceWinner(gameId, updated);
