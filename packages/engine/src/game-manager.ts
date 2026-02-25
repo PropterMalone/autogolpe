@@ -40,9 +40,11 @@ import type { DmSender } from './dm.js';
 
 const QUEUE_THRESHOLD = 3; // auto-start when queue reaches this size
 const GAME_TIMEOUT_MS = 30 * 60 * 1000; // abandon game after 30min of no activity
+const FINISHED_CLEANUP_MS = 5 * 60 * 1000; // remove finished games from memory after 5min
 
 export class GameManager {
 	private games = new Map<string, GameState>();
+	private finishedAt = new Map<string, number>(); // gameId → timestamp when game ended
 	private queue: QueueEntry[] = [];
 
 	constructor(
@@ -448,7 +450,7 @@ export class GameManager {
 			if (now - game.phaseStartedAt > GAME_TIMEOUT_MS) {
 				console.log(`Game ${gameId} timed out (no activity for 30min)`);
 				const finished = { ...game, status: 'finished' as const, winner: null };
-				this.updateAndSave(gameId, finished);
+				this.updateAndSave(gameId, finished, now);
 				await this.announceInGame(
 					gameId,
 					`Game #${gameId} abandoned (no activity for 30 minutes).`,
@@ -460,8 +462,16 @@ export class GameManager {
 			const result = autoAdvance(game, now);
 			if (result.state !== game) {
 				// State changed — auto-advanced
-				this.updateAndSave(gameId, result.state);
+				this.updateAndSave(gameId, result.state, now);
 				await this.announceStateChange(gameId, result.state, game);
+			}
+		}
+
+		// Clean up finished games from memory (DB retains them)
+		for (const [gameId, endedAt] of this.finishedAt) {
+			if (now - endedAt > FINISHED_CLEANUP_MS) {
+				this.games.delete(gameId);
+				this.finishedAt.delete(gameId);
 			}
 		}
 	}
@@ -570,9 +580,15 @@ export class GameManager {
 
 		await this.announceInGame(state.id, text, 'action');
 
-		// For coup, we need to prompt the target
-		if (action === 'coup' && state.turnPhase === 'losing_influence') {
-			await this.promptInfluenceLoss(state);
+		// For coup: prompt target or announce next turn if auto-resolved (1-card target)
+		if (action === 'coup') {
+			if (state.turnPhase === 'losing_influence') {
+				await this.promptInfluenceLoss(state);
+			} else if (state.status === 'finished') {
+				await this.announceWinner(state.id, state);
+			} else if (state.turnPhase === 'awaiting_action') {
+				await this.announceNextTurn(state.id, state);
+			}
 		}
 	}
 
@@ -784,22 +800,11 @@ export class GameManager {
 
 	private async handleAutoResolution(gameId: string): Promise<void> {
 		const game = this.games.get(gameId);
-		if (!game) return;
-
-		if (game.status === 'finished') {
-			await this.announceWinner(gameId, game);
-			return;
-		}
+		if (!game || game.status === 'finished') return;
 
 		// If we ended up in exchanging phase after a resolve, prompt
 		if (game.turnPhase === 'exchanging') {
 			await this.promptExchange(game);
-		}
-
-		// Game logic may have set status to 'finished' during resolution above.
-		const updated = this.games.get(gameId);
-		if (updated?.status === 'finished') {
-			await this.announceWinner(gameId, updated);
 		}
 	}
 
@@ -807,9 +812,12 @@ export class GameManager {
 	// Internal
 	// ---------------------------------------------------------------------------
 
-	private updateAndSave(gameId: string, state: GameState): void {
+	private updateAndSave(gameId: string, state: GameState, now?: number): void {
 		this.games.set(gameId, state);
 		saveGame(this.db, state);
+		if (state.status === 'finished' && !this.finishedAt.has(gameId)) {
+			this.finishedAt.set(gameId, now ?? Date.now());
+		}
 	}
 
 	private formatTimeRemaining(state: GameState): string {

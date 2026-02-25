@@ -15,7 +15,7 @@ import {
 import type { DmSender } from './dm.js';
 import { GameManager } from './game-manager.js';
 
-let BOT_HANDLE = 'autogolpe.bsky.social';
+let BOT_HANDLE = 'autogulp.bsky.social';
 
 // Coup needs faster polling than Werewolf — 10s vs 30s
 const POLL_INTERVAL_MS = 10_000;
