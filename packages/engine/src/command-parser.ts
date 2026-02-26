@@ -102,6 +102,9 @@ export type DmCommand =
 	| { kind: 'reveal'; cardIndex: number }
 	| { kind: 'reveal_role'; role: CardRole }
 	| { kind: 'keep'; roles: CardRole[] }
+	| { kind: 'queue' }
+	| { kind: 'unqueue' }
+	| { kind: 'queue_status' }
 	| { kind: 'help' }
 	| { kind: 'unknown'; text: string };
 
@@ -111,6 +114,9 @@ export function parseDm(text: string): DmCommand {
 	const norm = text.trim().toLowerCase();
 
 	if (/^(hand|cards|my\s+cards)$/.test(norm)) return { kind: 'hand' };
+	if (/^(queue|lfg)$/.test(norm)) return { kind: 'queue' };
+	if (/^unqueue$/.test(norm)) return { kind: 'unqueue' };
+	if (/^queue\?$/.test(norm)) return { kind: 'queue_status' };
 	if (/^(help|\?)$/.test(norm)) return { kind: 'help' };
 
 	// "reveal 1" or "reveal 2" (1-indexed for humans)

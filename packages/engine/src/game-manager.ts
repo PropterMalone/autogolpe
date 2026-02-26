@@ -366,14 +366,32 @@ export class GameManager {
 	// ---------------------------------------------------------------------------
 
 	async addToQueue(did: Did, handle: string, postUri: string, postCid: string): Promise<void> {
-		// Check if already in an active game
+		const reply = (msg: string) => this.replyGeneral(msg, postUri, postCid);
+		await this.addToQueueCore(did, handle, reply);
+	}
+
+	async addToQueueViaDm(did: Did): Promise<void> {
+		const handle = await this.resolveDidToHandle(did);
+		if (!handle) {
+			await this.dm.sendDm(did, 'Could not resolve your handle. Try queuing via a public mention.');
+			return;
+		}
+		const reply = (msg: string) => this.dm.sendDm(did, msg).then(() => {});
+		await this.addToQueueCore(did, handle, reply);
+	}
+
+	private async addToQueueCore(
+		did: Did,
+		handle: string,
+		reply: (msg: string) => Promise<void>,
+	): Promise<void> {
 		if (this.findGameForPlayer(did)) {
-			await this.replyGeneral('You are already in an active game.', postUri, postCid);
+			await reply('You are already in an active game.');
 			return;
 		}
 
 		if (this.queue.some((q) => q.did === did)) {
-			await this.replyGeneral('You are already in the queue.', postUri, postCid);
+			await reply('You are already in the queue.');
 			return;
 		}
 
@@ -381,10 +399,8 @@ export class GameManager {
 		this.queue.push(entry);
 		saveQueueEntry(this.db, entry);
 
-		await this.replyGeneral(
+		await reply(
 			`You're in the queue (${this.queue.length}/${QUEUE_THRESHOLD}). Game starts when ${QUEUE_THRESHOLD} players are queued.`,
-			postUri,
-			postCid,
 		);
 
 		if (this.queue.length >= QUEUE_THRESHOLD) {
@@ -393,26 +409,54 @@ export class GameManager {
 	}
 
 	async removeFromQueue(did: Did, postUri: string, postCid: string): Promise<void> {
+		const reply = (msg: string) => this.replyGeneral(msg, postUri, postCid);
+		await this.removeFromQueueCore(did, reply);
+	}
+
+	async removeFromQueueViaDm(did: Did): Promise<void> {
+		const reply = (msg: string) => this.dm.sendDm(did, msg).then(() => {});
+		await this.removeFromQueueCore(did, reply);
+	}
+
+	private async removeFromQueueCore(
+		did: Did,
+		reply: (msg: string) => Promise<void>,
+	): Promise<void> {
 		const idx = this.queue.findIndex((q) => q.did === did);
 		if (idx === -1) {
-			await this.replyGeneral('You are not in the queue.', postUri, postCid);
+			await reply('You are not in the queue.');
 			return;
 		}
 		this.queue.splice(idx, 1);
 		removeQueueEntry(this.db, did);
-		await this.replyGeneral('You left the queue.', postUri, postCid);
+		await reply('You left the queue.');
 	}
 
 	async queueStatus(postUri: string, postCid: string): Promise<void> {
+		const reply = (msg: string) => this.replyGeneral(msg, postUri, postCid);
+		await this.queueStatusCore(reply);
+	}
+
+	async queueStatusViaDm(did: Did): Promise<void> {
+		const reply = (msg: string) => this.dm.sendDm(did, msg).then(() => {});
+		await this.queueStatusCore(reply);
+	}
+
+	private async queueStatusCore(reply: (msg: string) => Promise<void>): Promise<void> {
 		if (this.queue.length === 0) {
-			await this.replyGeneral('Queue is empty. Mention me with "queue" to join.', postUri, postCid);
+			await reply('Queue is empty. Send "queue" to join.');
 		} else {
 			const handles = this.queue.map((q) => `@${q.handle}`).join(', ');
-			await this.replyGeneral(
-				`Queue (${this.queue.length}/${QUEUE_THRESHOLD}): ${handles}`,
-				postUri,
-				postCid,
-			);
+			await reply(`Queue (${this.queue.length}/${QUEUE_THRESHOLD}): ${handles}`);
+		}
+	}
+
+	private async resolveDidToHandle(did: Did): Promise<string | null> {
+		try {
+			const response = await this.agent.getProfile({ actor: did });
+			return response.data.handle;
+		} catch {
+			return null;
 		}
 	}
 
