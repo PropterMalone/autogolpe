@@ -35,7 +35,7 @@ export const FAQ_HTML = `<!DOCTYPE html>
 
 <h2>Quick Start</h2>
 <ul>
-  <li>Mention <code>@autogulp.bsky.social queue</code> to join the matchmaking queue</li>
+  <li>Mention <code>@autogulp.bsky.social queue</code> or DM the bot <code>queue</code> to join</li>
   <li>When 3 players are queued, the game starts automatically</li>
   <li>Check your DMs for your two secret role cards</li>
   <li>On your turn, mention the bot with an action (e.g. <code>income</code>, <code>tax</code>, <code>coup @player</code>)</li>
@@ -113,8 +113,11 @@ export const FAQ_HTML = `<!DOCTYPE html>
 </ul>
 
 <h2>DM Commands</h2>
-<p>Some actions require private responses via DM to <code>@autogulp.bsky.social</code>:</p>
+<p>DM <code>@autogulp.bsky.social</code> for private actions and queue management:</p>
 <ul>
+  <li><code>queue</code> or <code>lfg</code> — Join the matchmaking queue (same as public mention)</li>
+  <li><code>unqueue</code> — Leave the queue</li>
+  <li><code>queue?</code> — Check queue status</li>
   <li><code>hand</code> — View your current cards</li>
   <li><code>reveal 1</code> or <code>reveal 2</code> — Choose which card to lose (by position)</li>
   <li><code>reveal duke</code> — Choose which card to lose (by role name)</li>

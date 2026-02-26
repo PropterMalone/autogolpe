@@ -22,7 +22,7 @@ Bluffing card game bot for AT Protocol. Players claim roles, challenge each othe
 packages/
   shared/   — Pure game logic, types, deck operations. Zero I/O.
   engine/   — Bot, DM handling, DB, polling loop. All I/O here.
-  feed/     — Feed generator (placeholder)
+  feed/     — Feed generator + FAQ page (serves https://malone.taildf301e.ts.net:4443/faq)
 ```
 
 ## Architecture
@@ -40,6 +40,11 @@ packages/
 ## Biome
 - `noNonNullAssertion` is OFF (noUncheckedIndexedAccess + game state makes assertions necessary)
 - `useLiteralKeys` is OFF (bracket access needed for index signatures)
+
+## FAQ Page
+- **Location**: `packages/feed/src/faq.ts` (static HTML string)
+- **URL**: https://malone.taildf301e.ts.net:4443/faq
+- **Keep updated**: When adding/changing commands, actions, DM features, or game mechanics, update the FAQ to match. The FAQ is the primary user-facing documentation.
 
 ## Test Accounts
 - bobbyquine, jackautomatic, rikkiwildside (shared across all bot projects)
