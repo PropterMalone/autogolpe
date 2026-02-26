@@ -152,6 +152,13 @@ describe('parseDm', () => {
 		});
 	});
 
+	it('parses queue commands', () => {
+		expect(parseDm('queue')).toEqual({ kind: 'queue' });
+		expect(parseDm('lfg')).toEqual({ kind: 'queue' });
+		expect(parseDm('unqueue')).toEqual({ kind: 'unqueue' });
+		expect(parseDm('queue?')).toEqual({ kind: 'queue_status' });
+	});
+
 	it('parses help', () => {
 		expect(parseDm('help')).toEqual({ kind: 'help' });
 		expect(parseDm('?')).toEqual({ kind: 'help' });

@@ -406,10 +406,22 @@ async function handleDm(
 			if (error) await dm.sendDm(senderDid, error);
 			break;
 		}
+		case 'queue': {
+			await manager.addToQueueViaDm(senderDid);
+			break;
+		}
+		case 'unqueue': {
+			await manager.removeFromQueueViaDm(senderDid);
+			break;
+		}
+		case 'queue_status': {
+			await manager.queueStatusViaDm(senderDid);
+			break;
+		}
 		case 'help': {
 			await dm.sendDm(
 				senderDid,
-				'DM commands:\n• hand — view your cards\n• reveal 1 or reveal 2 — reveal a card\n• reveal duke — reveal by role name\n• keep duke captain — choose cards for exchange',
+				'DM commands:\n• queue — join the game queue\n• unqueue — leave the queue\n• queue? — check queue status\n• hand — view your cards\n• reveal 1 or reveal 2 — reveal a card\n• reveal duke — reveal by role name\n• keep duke captain — choose cards for exchange',
 			);
 			break;
 		}
