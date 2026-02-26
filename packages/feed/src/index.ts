@@ -36,8 +36,8 @@ const server = createServer((req, res) => {
 	}
 
 	if (url.pathname === '/') {
-		res.writeHead(200, { 'Content-Type': 'text/plain' });
-		res.end('autogulp feed generator');
+		res.writeHead(302, { Location: '/faq' });
+		res.end();
 		return;
 	}
 
