@@ -26,6 +26,7 @@ import {
 } from '@autogolpe/shared';
 import type Database from 'better-sqlite3';
 import { type PostRef, postMessage, replyToPost, resolveHandle } from './bot.js';
+import type { DmSender } from './bot.js';
 import {
 	type QueueEntry,
 	clearQueueEntries,
@@ -36,7 +37,6 @@ import {
 	saveGame,
 	saveQueueEntry,
 } from './db.js';
-import type { DmSender } from './dm.js';
 
 const QUEUE_THRESHOLD = 3; // auto-start when queue reaches this size
 const GAME_TIMEOUT_MS = 30 * 60 * 1000; // abandon game after 30min of no activity
@@ -538,18 +538,22 @@ export class GameManager {
 
 	async reply(gameId: string, text: string, parentUri: string, parentCid: string): Promise<void> {
 		const game = this.games.get(gameId);
-		const rootUri = game?.announcementUri ?? parentUri;
-		const rootCid = game?.announcementCid ?? parentCid;
+		const parent = { uri: parentUri, cid: parentCid };
+		const root =
+			game?.announcementUri && game.announcementCid
+				? { uri: game.announcementUri, cid: game.announcementCid }
+				: parent;
 		try {
-			await replyToPost(this.agent, text, parentUri, parentCid, rootUri, rootCid);
+			await replyToPost(this.agent, text, parent, root);
 		} catch (err) {
 			console.error(`Reply failed for game ${gameId}:`, err);
 		}
 	}
 
 	async replyGeneral(text: string, parentUri: string, parentCid: string): Promise<void> {
+		const parent = { uri: parentUri, cid: parentCid };
 		try {
-			await replyToPost(this.agent, text, parentUri, parentCid, parentUri, parentCid);
+			await replyToPost(this.agent, text, parent, parent);
 		} catch (err) {
 			console.error('Reply failed:', err);
 		}
@@ -560,14 +564,8 @@ export class GameManager {
 		try {
 			let ref: PostRef;
 			if (game?.announcementUri && game.announcementCid) {
-				ref = await replyToPost(
-					this.agent,
-					text,
-					game.announcementUri,
-					game.announcementCid,
-					game.announcementUri,
-					game.announcementCid,
-				);
+				const root = { uri: game.announcementUri, cid: game.announcementCid };
+				ref = await replyToPost(this.agent, text, root, root);
 			} else {
 				ref = await postMessage(this.agent, text);
 				// Store as announcement ref for future replies

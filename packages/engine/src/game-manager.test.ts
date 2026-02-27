@@ -148,7 +148,7 @@ function createMockDm() {
 	return {
 		sendDm: vi.fn(async (did: string, text: string) => {
 			dms.push({ did, text });
-			return true;
+			return 'sent' as const;
 		}),
 		_dms: dms,
 	};
