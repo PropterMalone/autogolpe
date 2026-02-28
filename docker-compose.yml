@@ -8,13 +8,3 @@ services:
     volumes:
       - ./data:/data
     restart: unless-stopped
-
-  feed:
-    build: .
-    command: ["node", "packages/feed/dist/index.js"]
-    environment:
-      - FEED_PORT=3006
-      - FEED_HOSTNAME=malone.taildf301e.ts.net:4443
-    ports:
-      - "3006:3006"
-    restart: unless-stopped
