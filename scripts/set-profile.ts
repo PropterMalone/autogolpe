@@ -18,7 +18,7 @@ Claim roles, steal coins, assassinate rivals, bluff your way to power.
 
 "queue" to play, "help" for commands. 3-6 players, ~10 min.
 
-FAQ: https://malone.taildf301e.ts.net:4443/faq`;
+FAQ: https://malone.taildf301e.ts.net/autogolpe/faq`;
 
 async function resizeForUpload(
 	filePath: string,
