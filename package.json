@@ -14,8 +14,8 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "format:check": "biome format .",
-    "type-check": "tsc --noEmit",
-    "validate": "biome check . && tsc --noEmit && vitest run",
+    "type-check": "tsc -b",
+    "validate": "biome check . && tsc -b && vitest run",
     "dev": "npm run dev --workspace=packages/engine"
   },
   "devDependencies": {
