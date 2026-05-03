@@ -5,3 +5,5 @@ coverage/
 .env
 data/
 CLAUDE.md
+entities.json
+mempalace.yaml
