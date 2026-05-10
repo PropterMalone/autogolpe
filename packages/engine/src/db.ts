@@ -52,14 +52,6 @@ export function saveGame(db: Database.Database, state: GameState): void {
 	).run(state.id, json, state.createdAt, now, json, now);
 }
 
-export function loadGame(db: Database.Database, id: string): GameState | null {
-	const row = db.prepare('SELECT state FROM games WHERE id = ?').get(id) as
-		| { state: string }
-		| undefined;
-	if (!row) return null;
-	return JSON.parse(row.state) as GameState;
-}
-
 export function loadActiveGames(db: Database.Database): GameState[] {
 	const rows = db
 		.prepare("SELECT state FROM games WHERE json_extract(state, '$.status') != 'finished'")

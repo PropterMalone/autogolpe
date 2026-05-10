@@ -1,0 +1,15 @@
+{
+	"entry": [
+		"packages/engine/src/index.ts",
+		"packages/feed/src/index.ts",
+		"packages/shared/src/index.ts",
+		"scripts/*.ts"
+	],
+	"ignorePatterns": [
+		"**/dist/**",
+		"**/node_modules/**",
+		"**/*.test.ts",
+		"data/**"
+	],
+	"ignoreDependencies": ["propter-bsky-kit"]
+}

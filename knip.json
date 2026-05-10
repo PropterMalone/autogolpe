@@ -1,0 +1,11 @@
+{
+	"$schema": "https://unpkg.com/knip@5/schema.json",
+	"workspaces": {
+		".": {
+			"entry": ["scripts/*.ts"],
+			"ignoreDependencies": ["tsx", "@atproto/api"]
+		}
+	},
+	"ignoreExportsUsedInFile": true,
+	"ignore": ["packages/engine/package.json"]
+}

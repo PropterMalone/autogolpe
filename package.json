@@ -15,12 +15,16 @@
     "format": "biome format --write .",
     "format:check": "biome format .",
     "type-check": "tsc -b",
-    "validate": "biome check . && tsc -b && vitest run",
+    "lint:dead": "knip && fallow dead-code",
+    "lint:dead:full": "knip && fallow",
+    "validate": "biome check . && tsc -b && vitest run && knip && fallow dead-code",
     "dev": "npm run dev --workspace=packages/engine"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.0",
     "@vitest/coverage-v8": "^3.0.0",
+    "fallow": "2.69.0",
+    "knip": "6.12.2",
     "sharp": "^0.34.5",
     "tsx": "^4.21.0",
     "typescript": "^5.7.0",
